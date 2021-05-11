@@ -88,21 +88,8 @@ namespace electron {
 
 namespace {
 
-class RenderFrameStatus final : public content::RenderFrameObserver {
- public:
-  explicit RenderFrameStatus(content::RenderFrame* render_frame)
-      : content::RenderFrameObserver(render_frame) {}
-  ~RenderFrameStatus() final = default;
-
-  bool is_ok() { return render_frame() != nullptr; }
-
-  // RenderFrameObserver implementation.
-  void OnDestruct() final {}
-};
-
-content::RenderFrame* GetRenderFrame(v8::Local<v8::Value> value) {
-  v8::Local<v8::Context> context =
-      v8::Local<v8::Object>::Cast(value)->CreationContext();
+content::RenderFrame* GetRenderFrame(v8::Local<v8::Object> value) {
+  v8::Local<v8::Context> context = value->CreationContext();
   if (context.IsEmpty())
     return nullptr;
   blink::WebLocalFrame* frame = blink::WebLocalFrame::FrameForContext(context);
@@ -533,9 +520,9 @@ void RendererClientBase::SetupMainWorldOverrides(
 
   gin_helper::Dictionary isolated_api = gin::Dictionary::CreateEmpty(isolate);
   isolated_api.SetMethod("allowGuestViewElementDefinition",
-                         AllowGuestViewElementDefinition);
-  isolated_api.SetMethod("getWebFrameId", GetWebFrameId);
-  isolated_api.SetMethod("setIsWebView", SetIsWebView);
+                         &AllowGuestViewElementDefinition);
+  isolated_api.SetMethod("getWebFrameId", &GetWebFrameId);
+  isolated_api.SetMethod("setIsWebView", &SetIsWebView);
   isolated_api.SetMethod("createNativeImage", &api::NativeImage::CreateEmpty);
 
   std::vector<v8::Local<v8::String>> isolated_bundle_params = {
@@ -558,9 +545,7 @@ void RendererClientBase::AllowGuestViewElementDefinition(
   blink::WebCustomElement::EmbedderNamesAllowedScope embedder_names_scope;
 
   content::RenderFrame* render_frame = GetRenderFrame(context);
-  RenderFrameStatus render_frame_status(render_frame);
-
-  if (!render_frame_status.is_ok())
+  if (!render_frame)
     return;
 
   render_frame->GetWebFrame()->RequestExecuteV8Function(
@@ -569,14 +554,12 @@ void RendererClientBase::AllowGuestViewElementDefinition(
 }
 
 // static
-int RendererClientBase::GetWebFrameId(v8::Local<v8::Value> content_window) {
+int RendererClientBase::GetWebFrameId(v8::Local<v8::Object> content_window) {
   // Get the WebLocalFrame before (possibly) executing any user-space JS while
   // getting the |params|. We track the status of the RenderFrame via an
   // observer in case it is deleted during user code execution.
   content::RenderFrame* render_frame = GetRenderFrame(content_window);
-  RenderFrameStatus render_frame_status(render_frame);
-
-  if (!render_frame_status.is_ok())
+  if (!render_frame)
     return -1;
 
   blink::WebLocalFrame* frame = render_frame->GetWebFrame();
